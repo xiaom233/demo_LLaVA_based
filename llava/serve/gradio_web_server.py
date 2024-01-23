@@ -157,7 +157,7 @@ def http_bot(state, model_selector, temperature, top_p, max_new_tokens, request:
     logger.info(f"http_bot. ip: {request.client.host}")
     start_tstamp = time.time()
     model_name = model_selector
-
+    task_name = task_selector
     if state.skip_next:
         # This generate call is skipped due to invalid inputs
         yield (state, state.to_gradio_chatbot()) + (no_change_btn,) * 5
@@ -223,6 +223,7 @@ def http_bot(state, model_selector, temperature, top_p, max_new_tokens, request:
     # Make requests
     pload = {
         "model": model_name,
+        "task": task_name,
         "prompt": prompt,
         "temperature": float(temperature),
         "top_p": float(top_p),
@@ -314,7 +315,7 @@ def build_demo(embed_mode):
             gr.Markdown(title_markdown)
 
         with gr.Row():
-            with gr.Column(scale=3):
+            with gr.Column(scale=6):
                 with gr.Row(elem_id="model_selector_row"):
                     model_selector = gr.Dropdown(
                         choices=models,
@@ -322,18 +323,27 @@ def build_demo(embed_mode):
                         interactive=True,
                         show_label=False,
                         container=False)
-
+                # task_selector = tasks[0]
+                with gr.Row(elem_id="task_selector_row"):
+                    task_selector = gr.Dropdown(
+                        choices=tasks,
+                        value=tasks[0] if len(tasks) > 0 else "",
+                        interactive=True,
+                        show_label=False,
+                        container=False)
+                imagebox = gr.Image(type="pil")
+                imagebox = gr.Image(type="pil")
                 imagebox = gr.Image(type="pil")
                 image_process_mode = gr.Radio(
                     ["Crop", "Resize", "Pad", "Default"],
                     value="Default",
                     label="Preprocess for non-square image", visible=False)
 
-                cur_dir = os.path.dirname(os.path.abspath(__file__))
-                gr.Examples(examples=[
-                    [f"{cur_dir}/examples/extreme_ironing.jpg", "What is unusual about this image?"],
-                    [f"{cur_dir}/examples/waterview.jpg", "What are the things I should be cautious about when I visit here?"],
-                ], inputs=[imagebox, textbox])
+                # cur_dir = os.path.dirname(os.path.abspath(__file__))
+                # gr.Examples(examples=[
+                #     [f"{cur_dir}/examples/extreme_ironing.jpg", "What is unusual about this image?"],
+                #     [f"{cur_dir}/examples/waterview.jpg", "What are the things I should be cautious about when I visit here?"],
+                # ], inputs=[imagebox, textbox])
 
                 with gr.Accordion("Parameters", open=False) as parameter_row:
                     temperature = gr.Slider(minimum=0.0, maximum=1.0, value=0.2, step=0.1, interactive=True, label="Temperature",)
@@ -406,7 +416,7 @@ def build_demo(embed_mode):
             queue=False
         ).then(
             http_bot,
-            [state, model_selector, temperature, top_p, max_output_tokens],
+            [state, model_selector, task_selector, temperature, top_p, max_output_tokens],
             [state, chatbot] + btn_list
         )
 
@@ -417,7 +427,7 @@ def build_demo(embed_mode):
             queue=False
         ).then(
             http_bot,
-            [state, model_selector, temperature, top_p, max_output_tokens],
+            [state, model_selector, task_selector, temperature, top_p, max_output_tokens],
             [state, chatbot] + btn_list
         )
 
@@ -457,6 +467,7 @@ if __name__ == "__main__":
     logger.info(f"args: {args}")
 
     models = get_model_list()
+    tasks = ["quality description", "quality comparison", "quality comparison and reasoning"]
 
     logger.info(args)
     demo = build_demo(args.embed)

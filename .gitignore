@@ -33,3 +33,7 @@ ckpts*
 
 # Demo
 serve_images/
+model_zoo/
+controller*
+gradio_web_server*
+model_worker_*
