@@ -193,7 +193,7 @@ def http_bot(state, model_selector, task_selector, temperature, top_p, max_new_t
         elif "llama-2" in model_name:
             template_name = "llama_2"
         else:
-            template_name = "vicuna_v1"
+            template_name = "default"
         new_state = conv_templates[template_name].copy()
         new_state.append_message(new_state.roles[0], state.messages[-2][1])
         new_state.append_message(new_state.roles[1], None)
@@ -214,7 +214,7 @@ def http_bot(state, model_selector, task_selector, temperature, top_p, max_new_t
 
     # Construct prompt
     prompt = state.get_prompt()
-
+    prompt = prompt.replace("<image>\n", "")
     all_images = state.get_images(return_pil=True)
     all_image_hash = [hashlib.md5(image.tobytes()).hexdigest() for image in all_images]
     for image, hash in zip(all_images, all_image_hash):
@@ -411,7 +411,7 @@ def build_demo(embed_mode):
         clear_btn.click(
             clear_history,
             None,
-            [state, chatbot, textbox] + btn_list,
+            [state, chatbot, textbox, imagebox_0, imagebox_1, imagebox_2] + btn_list,
             queue=False
         )
 

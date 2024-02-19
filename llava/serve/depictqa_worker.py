@@ -69,9 +69,9 @@ def get_sys_msg(task):
     if "quality_single" in task:
         return QUALITY_SINGLE_SYS
     elif "quality_compare" in task:
-        return QUALITY_COMPARE_NOREASON_SYS
-    elif "quality_compare_noreason" in task:
         return QUALITY_COMPARE_SYS
+    elif "quality_compare_noreason" in task:
+        return QUALITY_COMPARE_NOREASON_SYS
     else:
         raise ValueError("This task is not supported yet")
 
