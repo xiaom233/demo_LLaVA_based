@@ -169,10 +169,7 @@ class DepictQA(ModelWorker):
                     self.image_paths.append(image_path)
             if len(images) == 1:
                 ref_path = self.image_paths[0]
-            elif len(images) == 2:
-                ref_path = self.image_paths[0]
-                a_path = self.image_paths[1]
-            elif len(images) == 3:
+            elif len(images) >= 2:
                 ref_path = self.image_paths[0]
                 a_path = self.image_paths[1]
                 b_path = self.image_paths[2]

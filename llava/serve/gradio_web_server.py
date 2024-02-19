@@ -126,7 +126,11 @@ def clear_history(request: gr.Request):
 
 def add_text(state, text, image_0, image_1, image_2, image_process_mode, request: gr.Request):
     logger.info(f"add_text. ip: {request.client.host}. len: {len(text)}")
-    images = [image_0, image_1, image_2,]
+    input_images = [image_0, image_1, image_2,]
+    images = []
+    for image in input_images:
+        if image is not None:
+            images.append(image)
     if len(text) <= 0 and images is None:
         state.skip_next = True
         return (state, state.to_gradio_chatbot(), "", None) + (no_change_btn,) * 5
@@ -140,6 +144,10 @@ def add_text(state, text, image_0, image_1, image_2, image_process_mode, request
     text = text[:1536]  # Hard cut-off
     if images is not None:
         text = text[:1200]  # Hard cut-off for images
+        if '<image>' not in text:
+            # text = '<Image><image></Image>' + text
+            text = text + '\n<image>'
+        text = (text, images, image_process_mode)
         if len(state.get_images(return_pil=True)) > 0:
             state = default_conversation.copy()
     logger.info(f"{text}")
@@ -403,7 +411,7 @@ def build_demo(embed_mode):
         clear_btn.click(
             clear_history,
             None,
-            [state, chatbot, textbox, imagebox_2] + btn_list,
+            [state, chatbot, textbox] + btn_list,
             queue=False
         )
 
