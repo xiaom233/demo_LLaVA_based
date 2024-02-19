@@ -7,8 +7,8 @@ from PIL import Image, ImageFile
 from torch.nn.utils import rnn
 
 import conversations
-from header import *
-from transformers import StoppingCriteria, StoppingCriteriaList
+from .header import *
+from transformers import StoppingCriteria, StoppingCriteriaList, AutoModelForCausalLM
 
 from .CLIP import load as load_clip
 
@@ -210,7 +210,7 @@ class LAMMPEFTModel(nn.Module):
             lora_dropout=self.args["lora_dropout"],
             target_modules=self.args["lora_target_modules"],
         )
-
+        # self.llama_model = AutoModelForCausalLM(vicuna_ckpt_path, low_cpu_mem_usage=True, trust_remote_code=True)
         self.llama_model = LlamaForCausalLM.from_pretrained(vicuna_ckpt_path)
         self.llama_model = get_peft_model(self.llama_model, peft_config)
         self.llama_model.print_trainable_parameters()
@@ -234,6 +234,8 @@ class LAMMPEFTModel(nn.Module):
         :param tupe image_paths: (bsz, )
         :return tensor, tensor: input feature to llama, attention mask to llama
         """
+        print("encode_image")
+        print(image_paths)
         inputs = self.load_and_transform_image_data_clip(
             image_paths, self.device, is_quality_analysis
         )  # bsz x 3 x 224 x 224
@@ -279,11 +281,14 @@ class LAMMPEFTModel(nn.Module):
         image_ouputs = []
         for image_path in image_paths:
             if os.path.exists(image_path):
+                print("load_and_transform_image_data_clip")
+                print(image_paths)
                 image = Image.open(image_path)
             elif image_path.startswith("http://"):
                 image = Image.open(requests.get(image_path, stream=True).raw)
             else:
                 print("can not load image: ", image_path)
+                image = None
             if is_quality_analysis:
                 image_output = self.visual_preprocess_quality(image).to(device)  # 3 x 224 x 224
             else:
@@ -563,7 +568,7 @@ class LAMMPEFTModel(nn.Module):
 
         p_after_texts = [f"{eov} " + prompt + "\n### Assistant:" for prompt in prompt_list]
         p_after_tokens = self.tokenizer(
-            p_after_texts, 
+            p_after_texts,
             padding="longest", return_length=True, # padding right
             add_special_tokens=False, return_tensors="pt"
         ).to(self.device)
@@ -585,17 +590,17 @@ class LAMMPEFTModel(nn.Module):
         inputs_embeds = torch.cat(
             [bos_embeds, p_before_embeds, feature_embeds, p_after_embeds], dim=1
         )  # bsz x (1+s1+NumVisionToken+s2) x embed_dim
-        
-        # p_after_embeds are on right, so the pads are right, 
+
+        # p_after_embeds are on right, so the pads are right,
         # we need to move all inputs_embeds to right,
         # to make the pads on left
         tokens_len = inputs_embeds.shape[1] - p_after_masks_len
         new_inputs_embeds = torch.zeros_like(inputs_embeds)
-        inputs_embeds_masks = torch.ones(inputs_embeds.shape[:-1], 
+        inputs_embeds_masks = torch.ones(inputs_embeds.shape[:-1],
                                          dtype=torch.int64, device=self.device)
         for idx in range(batch_size):
-            # 1. If do_sample=True, mask pad tokens will cause some errors. 
-            # 2. If do_sample=False, mask pad tokens will cause empty string: "". 
+            # 1. If do_sample=True, mask pad tokens will cause some errors.
+            # 2. If do_sample=False, mask pad tokens will cause empty string: "".
             # inputs_embeds_masks[idx, :-tokens_len[idx]] = 0
             new_inputs_embeds[idx, -tokens_len[idx]:, :] = inputs_embeds[idx, :tokens_len[idx], :]
             new_inputs_embeds[idx, :-tokens_len[idx], :] = inputs_embeds[idx, tokens_len[idx]:, :]
@@ -603,18 +608,20 @@ class LAMMPEFTModel(nn.Module):
         return new_inputs_embeds, inputs_embeds_masks
 
     def prepare_generation_embedding_quality(self, inputs):
-        prompt_list = inputs["prompt"]  # questions from user
-        image_embeds, _ = self.encode_image(inputs["images"], is_quality_analysis=True)
-        image_A_embeds, _ = self.encode_image(inputs["images_A"], is_quality_analysis=True)
-        image_B_embeds, _ = self.encode_image(inputs["images_B"], is_quality_analysis=True)
+        prompt_list = [inputs["prompt"]]  # questions from user
+        image_embeds, _ = self.encode_image([inputs["images"]], is_quality_analysis=True)
+        image_A_embeds, _ = self.encode_image([inputs["images_A"]], is_quality_analysis=True)
+        image_B_embeds, _ = self.encode_image([inputs["images_B"]], is_quality_analysis=True)
         batch_size = image_embeds.shape[0]
 
         p_before_embeds, eov_final = get_p_before_embeds(
             self.tokenizer, self.llama_model, inputs, image_embeds, image_A_embeds, image_B_embeds
         )
+        print(len(prompt_list))
         p_after_texts = [f"{eov_final}\n\n### Human: " + prompt + "\n### Assistant:" for prompt in prompt_list]
+        print(len(p_after_texts))
         p_after_tokens = self.tokenizer(
-            p_after_texts, 
+            p_after_texts,
             padding="longest", return_length=True, # padding right
             add_special_tokens=False, return_tensors="pt"
         ).to(self.device)
@@ -625,19 +632,25 @@ class LAMMPEFTModel(nn.Module):
             * self.tokenizer.bos_token_id
         )  # bsz x 1
         bos_embeds = self.llama_model.model.model.embed_tokens(bos)  # bsz x 1 x embed_dim
+        print("bos_embeds")
+        print(bos_embeds.shape)
+        print("p_before_embeds")
+        print(p_before_embeds.shape)
+        print("p_after_embeds")
+        print(p_after_embeds.shape)
 
         inputs_embeds = torch.cat([bos_embeds, p_before_embeds, p_after_embeds], dim=1)
 
-        # p_after_embeds are on right, so the pads are right, 
+        # p_after_embeds are on right, so the pads are right,
         # we need to move all inputs_embeds to right,
         # to make the pads on left
         tokens_len = inputs_embeds.shape[1] - p_after_masks_len
         new_inputs_embeds = torch.zeros_like(inputs_embeds)
-        inputs_embeds_masks = torch.ones(inputs_embeds.shape[:-1], 
+        inputs_embeds_masks = torch.ones(inputs_embeds.shape[:-1],
                                          dtype=torch.int64, device=self.device)
         for idx in range(batch_size):
-            # 1. If do_sample=True, mask pad tokens will cause some errors. 
-            # 2. If do_sample=False, mask pad tokens will cause empty string: "". 
+            # 1. If do_sample=True, mask pad tokens will cause some errors.
+            # 2. If do_sample=False, mask pad tokens will cause empty string: "".
             # inputs_embeds_masks[idx, :-tokens_len[idx]] = 0
             new_inputs_embeds[idx, -tokens_len[idx]:, :] = inputs_embeds[idx, :tokens_len[idx], :]
             new_inputs_embeds[idx, :-tokens_len[idx], :] = inputs_embeds[idx, tokens_len[idx]:, :]

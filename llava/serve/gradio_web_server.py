@@ -3,10 +3,8 @@ import datetime
 import json
 import os
 import time
-
 import gradio as gr
 import requests
-
 from llava.conversation import (default_conversation, conv_templates,
                                    SeparatorStyle)
 from llava.constants import LOGDIR
@@ -126,9 +124,10 @@ def clear_history(request: gr.Request):
     return (state, state.to_gradio_chatbot(), "", None) + (disable_btn,) * 5
 
 
-def add_text(state, text, image, image_process_mode, request: gr.Request):
+def add_text(state, text, image_0, image_1, image_2, image_process_mode, request: gr.Request):
     logger.info(f"add_text. ip: {request.client.host}. len: {len(text)}")
-    if len(text) <= 0 and image is None:
+    images = [image_0, image_1, image_2,]
+    if len(text) <= 0 and images is None:
         state.skip_next = True
         return (state, state.to_gradio_chatbot(), "", None) + (no_change_btn,) * 5
     if args.moderate:
@@ -139,21 +138,18 @@ def add_text(state, text, image, image_process_mode, request: gr.Request):
                 no_change_btn,) * 5
 
     text = text[:1536]  # Hard cut-off
-    if image is not None:
+    if images is not None:
         text = text[:1200]  # Hard cut-off for images
-        if '<image>' not in text:
-            # text = '<Image><image></Image>' + text
-            text = text + '\n<image>'
-        text = (text, image, image_process_mode)
         if len(state.get_images(return_pil=True)) > 0:
             state = default_conversation.copy()
+    logger.info(f"{text}")
     state.append_message(state.roles[0], text)
     state.append_message(state.roles[1], None)
     state.skip_next = False
     return (state, state.to_gradio_chatbot(), "", None) + (disable_btn,) * 5
 
 
-def http_bot(state, model_selector, temperature, top_p, max_new_tokens, request: gr.Request):
+def http_bot(state, model_selector, task_selector, temperature, top_p, max_new_tokens, request: gr.Request):
     logger.info(f"http_bot. ip: {request.client.host}")
     start_tstamp = time.time()
     model_name = model_selector
@@ -237,11 +233,12 @@ def http_bot(state, model_selector, temperature, top_p, max_new_tokens, request:
 
     state.messages[-1][-1] = "▌"
     yield (state, state.to_gradio_chatbot()) + (disable_btn,) * 5
-
     try:
         # Stream output
         response = requests.post(worker_addr + "/worker_generate_stream",
-            headers=headers, json=pload, stream=True, timeout=10)
+            headers=headers, json=pload, stream=True, timeout=30)
+        print("response")
+        print(response)
         for chunk in response.iter_lines(decode_unicode=False, delimiter=b"\0"):
             if chunk:
                 data = json.loads(chunk.decode())
@@ -331,9 +328,10 @@ def build_demo(embed_mode):
                         interactive=True,
                         show_label=False,
                         container=False)
-                imagebox = gr.Image(type="pil")
-                imagebox = gr.Image(type="pil")
-                imagebox = gr.Image(type="pil")
+                imagebox_0= gr.Image(type="pil", elem_id="imagebox_0")
+                imagebox_1 = gr.Image(type="pil", elem_id="imagebox_1")
+                imagebox_2 = gr.Image(type="pil", elem_id="imagebox_2")
+                imagebox = [imagebox_0, imagebox_1, imagebox_2]
                 image_process_mode = gr.Radio(
                     ["Crop", "Resize", "Pad", "Default"],
                     value="Default",
@@ -394,7 +392,7 @@ def build_demo(embed_mode):
         regenerate_btn.click(
             regenerate,
             [state, image_process_mode],
-            [state, chatbot, textbox, imagebox] + btn_list,
+            [state, chatbot, textbox, imagebox_2] + btn_list,
             queue=False
         ).then(
             http_bot,
@@ -405,14 +403,14 @@ def build_demo(embed_mode):
         clear_btn.click(
             clear_history,
             None,
-            [state, chatbot, textbox, imagebox] + btn_list,
+            [state, chatbot, textbox, imagebox_2] + btn_list,
             queue=False
         )
 
         textbox.submit(
             add_text,
-            [state, textbox, imagebox, image_process_mode],
-            [state, chatbot, textbox, imagebox] + btn_list,
+            [state, textbox, imagebox_0, imagebox_1, imagebox_2, image_process_mode],
+            [state, chatbot, textbox, imagebox_2] + btn_list,
             queue=False
         ).then(
             http_bot,
@@ -422,8 +420,8 @@ def build_demo(embed_mode):
 
         submit_btn.click(
             add_text,
-            [state, textbox, imagebox, image_process_mode],
-            [state, chatbot, textbox, imagebox] + btn_list,
+            [state, textbox, imagebox_0, imagebox_1, imagebox_2, image_process_mode],
+            [state, chatbot, textbox, imagebox_2] + btn_list,
             queue=False
         ).then(
             http_bot,
@@ -467,7 +465,7 @@ if __name__ == "__main__":
     logger.info(f"args: {args}")
 
     models = get_model_list()
-    tasks = ["quality description", "quality comparison", "quality comparison and reasoning"]
+    tasks = ["quality_single", "quality_compare", "quality_compare_noreason"]
 
     logger.info(args)
     demo = build_demo(args.embed)
