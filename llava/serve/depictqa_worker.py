@@ -153,6 +153,9 @@ class DepictQA(ModelWorker):
             logger.info("images received")
         num_image_tokens = 0
         image_path = "/home"
+        ref_path = None
+        a_path = None
+        b_path = None
         if images is not None and len(images) > 0 and self.is_multimodal:
             if len(images) > 0:
                 logger.info(f"images length is {len(images)}")
@@ -164,25 +167,26 @@ class DepictQA(ModelWorker):
                     logger.info(f"image path:")
                     logger.info(f"{image_path}")
                     self.image_paths.append(image_path)
-
+            if len(images) == 1:
+                ref_path = self.image_paths[0]
+            elif len(images) == 2:
+                ref_path = self.image_paths[0]
+                a_path = self.image_paths[1]
+            elif len(images) == 3:
+                ref_path = self.image_paths[0]
+                a_path = self.image_paths[1]
+                b_path = self.image_paths[2]
             else:
                 images = None
             image_args = {}
         else:
             images = None
             image_args = {}
-        if task == "quality description":
-            # image_paths = self.image_paths[-2:].append("")
-            image_paths = os.path.abspath(image_path)
-        elif task == "quality comparison" or "quality comparison and reasoning":
-            # image_paths = self.image_paths[-3:]
-            image_paths = os.path.abspath(image_path)
-        else:
-            image_paths = []
-        # path = ""
-        # for image_path in image_paths:
-        #     path += image_path+"\n"
-        logger.info(image_paths)
+
+        logger.info(f"Reference path: {ref_path}")
+        logger.info(f"Image A path: {a_path}")
+        logger.info(f"Image B path: {b_path}")
+
         temperature = float(params.get("temperature", 1.0))
         top_p = float(params.get("top_p", 1.0))
         max_context_length = params.get('max_position_embeddings', 2048)
@@ -208,9 +212,9 @@ class DepictQA(ModelWorker):
             # images=image_paths[0],
             # images_A=image_paths[1],
             # images_B=image_paths[2],
-            images=image_paths,
-            images_A=image_paths,
-            images_B=image_paths,
+            images=ref_path,
+            images_A=a_path,
+            images_B=b_path,
             top_p=top_p,
             temperature=temperature,
             max_tgt_len=max_new_tokens,
